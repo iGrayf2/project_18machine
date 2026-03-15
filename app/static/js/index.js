@@ -47,7 +47,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const option = document.createElement("option");
       option.value = "";
       option.textContent = "Нет рецептов";
-      els.recipeSelect.appendChild(option);
+      els.recipeSelect.appendChild(option); 
       return;
     }
 
