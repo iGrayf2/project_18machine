@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+
+{% block title %}Главный экран{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="/static/css/index.css" />
+{% endblock %}
+
+{% block content %}
+<header class="topbar">
+  <div class="topbar-left">
+    <h1 id="app-title">Управление машиной</h1>
+  </div>
+
+  <div class="topbar-right">
+    <div class="status-badge">
+      <span class="status-label">WebSocket</span>
+      <span id="ws-status" class="status-value disconnected">не подключено</span>
+    </div>
+
+    <div class="status-badge">
+      <span class="status-label">Состояние</span>
+      <span id="machine-state" class="status-value paused">ПАУЗА</span>
+    </div>
+  </div>
+</header>
+
+<main class="dashboard-grid">
+  <section class="panel recipe-panel">
+    <h2 class="panel-title">Рецепт</h2>
+
+    <div class="field-group">
+      <label class="field-label">Рецептов в системе</label>
+      <div id="recipes-count" class="field-readonly">0</div>
+    </div>
+
+    <div class="field-group">
+      <label class="field-label" for="recipe-select">Выбранный рецепт</label>
+      <select id="recipe-select" class="field-input">
+        <option value="">Выберите рецепт</option>
+      </select>
+      <div class="hint-text">↑/↓ — смена рецепта</div>
+    </div>
+
+    <div class="field-group">
+      <label class="field-label" for="recipe-repeats-input">Повторы рецепта</label>
+      <input
+        id="recipe-repeats-input"
+        class="field-input"
+        type="number"
+        min="1"
+        step="1"
+        value="1"
+      />
+      <div class="hint-text">Enter — применить</div>
+    </div>
+  </section>
+
+  <section class="panel realtime-panel">
+    <h2 class="panel-title">Текущие данные</h2>
+
+    <div class="metric-card">
+      <div class="metric-title">Угол энкодера</div>
+      <div class="metric-value">
+        <span id="encoder-angle">0</span><span class="metric-unit">°</span>
+      </div>
+    </div>
+
+    <div class="metric-card">
+      <div class="metric-title">Обороты машины</div>
+      <div class="metric-value">
+        <span id="machine-rpm">0</span><span class="metric-unit">об/мин</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel progress-panel">
+    <h2 class="panel-title">Прогресс выполнения</h2>
+
+    <div class="progress-row">
+      <span class="progress-label">Текущий цикл</span>
+      <span class="progress-value">
+        <span id="current-cycle">0</span> / <span id="cycles-total">0</span>
+      </span>
+    </div>
+
+    <div class="progress-row">
+      <span class="progress-label">Оборот цикла</span>
+      <span class="progress-value">
+        <span id="current-cycle-turn">0</span> / <span id="current-cycle-turn-target">0</span>
+      </span>
+    </div>
+
+    <div class="progress-row">
+      <span class="progress-label">Повтор рецепта</span>
+      <span class="progress-value" id="current-recipe-repeat">0</span>
+    </div>
+  </section>
+
+  <section class="panel actions-panel">
+    <h2 class="panel-title">Управление</h2>
+
+    <div class="actions-wrap">
+      <button id="reset-button" class="action-btn reset-btn" type="button">
+        СБРОС (F5)
+      </button>
+      <button id="settings-button" class="action-btn settings-btn" type="button">
+        НАСТРОЙКИ (F2)
+      </button>
+    </div>
+
+    <div class="keyboard-help">
+      <div>F2 — настройки</div>
+      <div>F5 — сброс</div>
+      <div>↑/↓ — выбор рецепта</div>
+      <div>Enter — применить повторы</div>
+      <div>Esc — убрать фокус</div>
+    </div>
+  </section>
+</main>
+{% endblock %}
+
+{% block extra_js %}
+<script src="/static/js/index.js"></script>
+{% endblock %}

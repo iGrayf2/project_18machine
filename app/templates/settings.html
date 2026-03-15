@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+
+{% block title %}Настройки{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="/static/css/settings.css" />
+{% endblock %}
+
+{% block content %}
+<header class="topbar">
+  <div class="topbar-left">
+    <h1>Настройки рецептов</h1>
+  </div>
+
+  <div class="topbar-right">
+    <div class="status-badge">
+      <span class="status-label">Режим</span>
+      <span class="status-value connected">НАСТРОЙКА</span>
+    </div>
+  </div>
+</header>
+
+<main class="settings-layout">
+  <!-- Левая колонка: рецепты -->
+  <section class="panel recipes-panel">
+    <div class="panel-header">
+      <h2 class="panel-title">Рецепты</h2>
+    </div>
+
+    <div class="recipe-actions">
+      <button id="new-recipe-btn" class="action-btn settings-btn" type="button">Новый</button>
+      <button id="copy-recipe-btn" class="action-btn settings-btn" type="button">Копировать</button>
+      <button id="delete-recipe-btn" class="action-btn reset-btn" type="button">Удалить</button>
+    </div>
+
+    <div class="field-group">
+      <label class="field-label" for="recipe-name-input">Название рецепта</label>
+      <input id="recipe-name-input" class="field-input" type="text" value="" />
+    </div>
+
+    <div class="field-group">
+      <label class="field-label" for="recipe-repeats-settings-input">Повторы рецепта</label>
+      <input
+        id="recipe-repeats-settings-input"
+        class="field-input"
+        type="number"
+        min="1"
+        step="1"
+        value="1"
+      />
+    </div>
+
+    <div class="list-title">Список рецептов</div>
+    <div id="recipe-list" class="list-box" tabindex="0"></div>
+  </section>
+
+  <!-- Правая часть -->
+  <section class="right-column">
+    <!-- Циклы -->
+    <section class="panel cycles-panel">
+      <div class="panel-header">
+        <h2 class="panel-title">Циклы</h2>
+      </div>
+
+      <div class="cycle-actions">
+        <button id="new-cycle-btn" class="action-btn settings-btn" type="button">Добавить цикл</button>
+        <button id="copy-cycle-btn" class="action-btn settings-btn" type="button">Копировать цикл</button>
+        <button id="delete-cycle-btn" class="action-btn reset-btn" type="button">Удалить цикл</button>
+        <button id="move-cycle-up-btn" class="action-btn settings-btn" type="button">Вверх</button>
+        <button id="move-cycle-down-btn" class="action-btn settings-btn" type="button">Вниз</button>
+      </div>
+
+      <div class="cycle-config">
+        <div class="field-group cycle-turns-group">
+          <label class="field-label" for="cycle-turns-input">Обороты цикла</label>
+          <input
+            id="cycle-turns-input"
+            class="field-input"
+            type="number"
+            min="1"
+            step="1"
+            value="1"
+          />
+        </div>
+      </div>
+
+      <div class="list-title">Список циклов</div>
+      <div id="cycle-list" class="list-box" tabindex="0"></div>
+    </section>
+
+    <!-- Таблица клапанов -->
+    <section class="panel events-panel">
+      <div class="panel-header">
+        <h2 class="panel-title">События цикла</h2>
+      </div>
+
+      <div class="table-tools">
+        <button id="clear-cycle-btn" class="action-btn settings-btn" type="button">Очистить цикл</button>
+      </div>
+
+      <div class="table-wrap">
+        <table class="events-table">
+          <thead>
+            <tr>
+              <th>Клапан</th>
+              <th>Событие</th>
+              <th>Угол</th>
+            </tr>
+          </thead>
+          <tbody id="events-tbody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Нижние кнопки -->
+    <section class="panel footer-actions-panel">
+      <div class="footer-actions">
+        <button id="save-settings-btn" class="action-btn settings-btn" type="button">СОХРАНИТЬ</button>
+        <button id="back-button" class="action-btn settings-btn" type="button">НАЗАД</button>
+      </div>
+
+      <div class="keyboard-help">
+  <div>F2 — назад на главный экран</div>
+  <div>F6 — сохранить</div>
+  <div>Insert — новый рецепт / новый цикл</div>
+  <div>Delete — удалить выбранный рецепт / цикл</div>
+  <div>Alt + ↑ / Alt + ↓ — смена рецепта</div>
+  <div>PageUp / PageDown — смена цикла</div>
+  <div>Ctrl + ↑ / Ctrl + ↓ — двигать цикл</div>
+  <div>↑ / ↓ — выбор строки клапана</div>
+  <div>Space — смена события</div>
+  <div>0 / 1 / 2 — — / ВКЛ / ВЫКЛ</div>
+  <div>Enter — перейти к углу</div>
+  <div>Ctrl + C / Ctrl + V — копировать / вставить строку</div>
+  <div>Esc — убрать фокус</div>
+</div>
+    </section>
+  </section>
+</main>
+{% endblock %}
+
+{% block extra_js %}
+<script src="/static/js/settings.js"></script>
+{% endblock %}

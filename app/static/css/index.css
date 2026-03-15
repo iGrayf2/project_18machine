@@ -1,0 +1,143 @@
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
+  padding: 16px 18px;
+  background: #2b2d33;
+  border: 1px solid #3a3d45;
+  border-radius: 14px;
+}
+
+.topbar-left h1 {
+  margin: 0;
+  font-size: 32px;
+  font-weight: 700;
+}
+
+.topbar-right {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.status-badge {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.status-label {
+  font-size: 13px;
+  color: #c9c9c9;
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: 1.1fr 1.3fr;
+  gap: 16px;
+}
+
+.progress-panel,
+.actions-panel {
+  grid-column: span 1;
+}
+
+.metric-card {
+  background: #181a1f;
+  border: 1px solid #40444e;
+  border-radius: 12px;
+  padding: 18px;
+  margin-bottom: 16px;
+}
+
+.metric-title {
+  font-size: 18px;
+  color: #cccccc;
+  margin-bottom: 10px;
+}
+
+.metric-value {
+  font-size: 54px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.metric-unit {
+  font-size: 20px;
+  margin-left: 8px;
+  color: #d2d2d2;
+}
+
+.progress-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  min-height: 52px;
+  padding: 12px 0;
+  border-bottom: 1px solid #3c4048;
+}
+
+.progress-row:last-child {
+  border-bottom: none;
+}
+
+.progress-label {
+  font-size: 18px;
+  color: #d7d7d7;
+}
+
+.progress-value {
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.actions-wrap {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+@media (max-width: 980px) {
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .topbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .topbar-left h1 {
+    font-size: 26px;
+  }
+
+  .metric-value {
+    font-size: 42px;
+  }
+
+  .actions-wrap {
+    grid-template-columns: 1fr;
+  }
+
+  .hint-text {
+  margin-top: 6px;
+  font-size: 13px;
+  color: #aeb4c0;
+}
+
+.keyboard-help {
+  margin-top: 18px;
+  padding: 12px;
+  border-radius: 10px;
+  background: #181a1f;
+  border: 1px solid #40444e;
+  color: #d3d7de;
+  font-size: 14px;
+  line-height: 1.6;
+}
+}
