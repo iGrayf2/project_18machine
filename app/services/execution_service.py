@@ -22,7 +22,6 @@ class ExecutionService:
         if recipe is None:
             return False
 
-        # При выборе нового рецепта делаем полный сброс клапанов
         self.hardware.reset_all_valves()
         self.engine.load_recipe(recipe)
         return True
@@ -43,11 +42,9 @@ class ExecutionService:
 
     def get_status_snapshot(self) -> dict:
         snapshot = self.engine.get_status_snapshot()
-
         recipes = self.recipe_service.get_recipe_short_list()
         snapshot["recipes"] = recipes
         snapshot["recipes_count"] = len(recipes)
-
         return snapshot
 
     def handle_action(self, payload: dict) -> dict | None:
@@ -80,12 +77,6 @@ class ExecutionService:
         return {"type": "error", "data": {"message": f"Неизвестное действие: {action}"}}
 
     def simulate_step(self) -> None:
-        """
-        Простая симуляция:
-        - угол растет
-        - при переходе через 360 даем фронт датчика оборота
-        - rpm всегда 30
-        """
         previous_angle = self._sim_angle
         next_angle = previous_angle + 15
 

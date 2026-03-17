@@ -30,42 +30,10 @@ document.addEventListener("DOMContentLoaded", () => {
     selectedCycleIndex: 0,
     selectedTableRowIndex: 0,
     copiedRow: null,
-
-    recipes: [
-      {
-        id: 1,
-        name: "Мочалка A",
-        repeats: 10,
-        cycles: [
-          {
-            id: 101,
-            turns: 20,
-            events: createEmptyEvents(),
-          },
-          {
-            id: 102,
-            turns: 15,
-            events: createEmptyEvents(),
-          },
-        ],
-      },
-      {
-        id: 2,
-        name: "Мочалка B",
-        repeats: 5,
-        cycles: [
-          {
-            id: 201,
-            turns: 12,
-            events: createEmptyEvents(),
-          },
-        ],
-      },
-    ],
+    recipes: [],
+    nextRecipeId: 1000,
+    nextCycleId: 10000,
   };
-
-  state.recipes[0].cycles[0].events[1] = { valve: 2, event: "on", angle: 45 };
-  state.recipes[0].cycles[0].events[3] = { valve: 4, event: "off", angle: 90 };
 
   function createEmptyEvents() {
     return Array.from({ length: 80 }, (_, index) => ({
@@ -73,6 +41,51 @@ document.addEventListener("DOMContentLoaded", () => {
       event: "",
       angle: 0,
     }));
+  }
+
+  function recalcNextIds() {
+    let maxRecipeId = 0;
+    let maxCycleId = 0;
+
+    for (const recipe of state.recipes) {
+      maxRecipeId = Math.max(maxRecipeId, Number(recipe.id) || 0);
+      for (const cycle of recipe.cycles || []) {
+        maxCycleId = Math.max(maxCycleId, Number(cycle.id) || 0);
+      }
+    }
+
+    state.nextRecipeId = maxRecipeId + 1;
+    state.nextCycleId = maxCycleId + 1;
+  }
+
+  async function loadRecipesFromBackend() {
+    const response = await fetch("/api/recipes");
+    if (!response.ok) {
+      throw new Error("Не удалось загрузить рецепты");
+    }
+
+    const data = await response.json();
+    state.recipes = Array.isArray(data.recipes) ? data.recipes : [];
+    recalcNextIds();
+    clampSelectedIndexes();
+    renderAll();
+  }
+
+  async function saveRecipesToBackend() {
+    const response = await fetch("/api/recipes/save", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ recipes: state.recipes }),
+    });
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.detail || "Не удалось сохранить рецепты");
+    }
+
+    return await response.json();
   }
 
   function getSelectedRecipe() {
@@ -278,14 +291,16 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function addRecipe() {
-    const newRecipeNumber = state.recipes.length + 1;
+    const recipeId = state.nextRecipeId++;
+    const cycleId = state.nextCycleId++;
+
     state.recipes.push({
-      id: Date.now(),
-      name: `Новый рецепт ${newRecipeNumber}`,
+      id: recipeId,
+      name: `Новый рецепт ${recipeId}`,
       repeats: 1,
       cycles: [
         {
-          id: Date.now() + 1,
+          id: cycleId,
           turns: 1,
           events: createEmptyEvents(),
         },
@@ -304,8 +319,13 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!recipe) return;
 
     const clone = JSON.parse(JSON.stringify(recipe));
-    clone.id = Date.now();
+    clone.id = state.nextRecipeId++;
     clone.name = `${recipe.name} копия`;
+
+    clone.cycles = clone.cycles.map((cycle) => ({
+      ...cycle,
+      id: state.nextCycleId++,
+    }));
 
     state.recipes.push(clone);
     state.selectedRecipeIndex = state.recipes.length - 1;
@@ -315,6 +335,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function deleteRecipe() {
     if (state.recipes.length === 0) return;
+
     state.recipes.splice(state.selectedRecipeIndex, 1);
 
     if (state.selectedRecipeIndex >= state.recipes.length) {
@@ -330,7 +351,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!recipe) return;
 
     recipe.cycles.push({
-      id: Date.now(),
+      id: state.nextCycleId++,
       turns: 1,
       events: createEmptyEvents(),
     });
@@ -347,7 +368,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!recipe || !cycle) return;
 
     const clone = JSON.parse(JSON.stringify(cycle));
-    clone.id = Date.now();
+    clone.id = state.nextCycleId++;
 
     recipe.cycles.splice(state.selectedCycleIndex + 1, 0, clone);
     state.selectedCycleIndex += 1;
@@ -418,11 +439,28 @@ document.addEventListener("DOMContentLoaded", () => {
     renderCycleList();
   }
 
-  function saveAll() {
+  async function saveAll() {
     saveRecipeMeta();
     saveCycleMeta();
-    console.log("Сохранение рецептов", state);
-    alert("Пока это демо. Сохранение в backend подключим дальше.");
+
+    if (!state.recipes.length) {
+      alert("Нет рецептов для сохранения");
+      return;
+    }
+
+    const hasEmptyRecipe = state.recipes.some((recipe) => !recipe.cycles || !recipe.cycles.length);
+    if (hasEmptyRecipe) {
+      alert("Нельзя сохранить рецепт без циклов");
+      return;
+    }
+
+    try {
+      await saveRecipesToBackend();
+      alert("Сохранено");
+    } catch (error) {
+      console.error(error);
+      alert(`Ошибка сохранения: ${error.message}`);
+    }
   }
 
   function goBack() {
@@ -675,5 +713,8 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  renderAll();
+  loadRecipesFromBackend().catch((error) => {
+    console.error(error);
+    alert(`Ошибка загрузки рецептов: ${error.message}`);
+  });
 });
