@@ -17,6 +17,12 @@ class ExecutionService:
         self._sim_rpm = 30
         self._sim_turn_signal = False
 
+    def close(self) -> None:
+        try:
+            self.hardware.close()
+        except Exception as e:
+            print(f"[EXECUTION] Hardware close error: {e}")
+
     def select_recipe(self, recipe_id: int) -> bool:
         recipe = self.recipe_service.get_recipe_by_id(recipe_id)
         if recipe is None:
@@ -76,6 +82,8 @@ class ExecutionService:
 
         return {"type": "error", "data": {"message": f"Неизвестное действие: {action}"}}
 
+    # Временная симуляция движения машины.
+    # Позже будет заменена на реальные данные от энкодера и датчика оборота.
     def simulate_step(self) -> None:
         previous_angle = self._sim_angle
         next_angle = previous_angle + 15
@@ -93,3 +101,6 @@ class ExecutionService:
             rpm=self._sim_rpm,
             turn_signal=self._sim_turn_signal,
         )
+
+
+execution_service = ExecutionService()

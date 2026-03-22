@@ -16,7 +16,9 @@ class MachineEngine:
         self.last_angle = 0
         self.last_turn_signal = False
 
-        self.executed_event_valves = set()
+        # Храним уже выполненные события как уникальные ключи:
+        # (valve, angle, event)
+        self.executed_event_keys = set()
 
     def load_recipe(self, recipe: dict) -> None:
         self.recipe = recipe
@@ -27,7 +29,7 @@ class MachineEngine:
 
         self.last_angle = 0
         self.last_turn_signal = False
-        self.executed_event_valves = set()
+        self.executed_event_keys = set()
 
         self.machine_state.selected_recipe_id = recipe.get("id")
         self.machine_state.selected_recipe_name = recipe.get("name")
@@ -36,7 +38,9 @@ class MachineEngine:
         self.machine_state.current_cycle_index = 1
         self.machine_state.current_cycle_turn = 1
         self.machine_state.current_recipe_repeat = 1
-        self.machine_state.current_cycle_turn_target = self.get_current_cycle().get("turns", 0) if self.get_current_cycle() else 0
+        self.machine_state.current_cycle_turn_target = (
+            self.get_current_cycle().get("turns", 0) if self.get_current_cycle() else 0
+        )
         self.machine_state.state = "paused"
         self.machine_state.valves = self.hardware.get_all_valves()
 
@@ -45,7 +49,7 @@ class MachineEngine:
         self.current_turn_in_cycle = 1
         self.current_recipe_repeat = 1
         self.last_angle = 0
-        self.executed_event_valves = set()
+        self.executed_event_keys = set()
 
         self.machine_state.current_cycle_index = 1
         self.machine_state.current_cycle_turn = 1
@@ -93,19 +97,35 @@ class MachineEngine:
 
     def _process_cycle_events(self, current_angle: int, cycle: dict) -> None:
         events = cycle.get("events", [])
+        pending_updates: list[tuple[int, bool]] = []
 
         for event in events:
             valve_number = event["valve"]
             event_angle = event["angle"]
             event_action = event["event"]
 
-            if valve_number in self.executed_event_valves:
+            event_key = (valve_number, event_angle, event_action)
+            if event_key in self.executed_event_keys:
                 continue
 
             if self._angle_passed(event_angle, current_angle):
                 state = event_action == "on"
-                self.hardware.set_valve(valve_number, state)
-                self.executed_event_valves.add(valve_number)
+                pending_updates.append((valve_number, state))
+                self.executed_event_keys.add(event_key)
+
+        if pending_updates:
+            # Если в одном проходе для одного клапана пришло несколько событий,
+            # оставляем последнее по порядку.
+            deduped_updates = self._dedupe_keep_last(pending_updates)
+            self.hardware.set_valves_bulk(deduped_updates)
+
+    def _dedupe_keep_last(self, updates: list[tuple[int, bool]]) -> list[tuple[int, bool]]:
+        result_map: dict[int, bool] = {}
+
+        for valve_number, state in updates:
+            result_map[valve_number] = state
+
+        return list(result_map.items())
 
     def _advance_turn_or_cycle(self) -> None:
         cycle = self.get_current_cycle()
@@ -132,7 +152,7 @@ class MachineEngine:
                 self.current_recipe_repeat = 1
 
         self.current_turn_in_cycle = 1
-        self.executed_event_valves = set()
+        self.executed_event_keys = set()
 
     def _is_new_turn(self, turn_signal: bool) -> bool:
         return (not self.last_turn_signal) and turn_signal

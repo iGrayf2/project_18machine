@@ -72,3 +72,11 @@ class HardwareManager:
 
     def is_real_mode(self) -> bool:
         return self.mode == "real"
+    
+    def set_valves_bulk(self, states: list[tuple[int, bool]]) -> None:
+        if hasattr(self.valve_driver, "set_valves_bulk"):
+            self.valve_driver.set_valves_bulk(states)
+            return
+
+        for valve_number, state in states:
+            self.valve_driver.set_valve(valve_number, state)

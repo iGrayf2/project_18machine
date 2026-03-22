@@ -1,11 +1,9 @@
 import asyncio
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from app.services.execution_service import ExecutionService
+from app.services.execution_service import execution_service
 
 router = APIRouter()
-
-execution_service = ExecutionService()
 
 
 @router.websocket("/ws")

@@ -16,7 +16,7 @@ class IOBoardDriver:
     """
     Реальный драйвер платы клапанов.
 
-    Интерфейс специально сделан совместимым с MockValveDriver:
+    Совместим по интерфейсу с MockValveDriver:
     - set_valve()
     - get_valve_state()
     - get_all_states()
@@ -27,6 +27,7 @@ class IOBoardDriver:
     - close()
     - initialize_board()
     - apply_state()
+    - ping()
     """
 
     SHORT_PACKET = bytes([0x9A, 0x05, 0x01, 0x01, 0x5E])
@@ -85,7 +86,6 @@ class IOBoardDriver:
             write_timeout=self.write_timeout,
         )
 
-        # небольшая стабилизация после открытия
         time.sleep(0.1)
 
     def close(self) -> None:
@@ -121,6 +121,7 @@ class IOBoardDriver:
     def reset_all(self) -> None:
         for i in range(len(self._state_bytes)):
             self._state_bytes[i] = 0x00
+        print("[BOARD] RESET ALL")
         self.apply_state()
 
     # ----------------------------
@@ -144,11 +145,29 @@ class IOBoardDriver:
             raise BoardProtocolError("Плата вернула некорректный ответ на snapshot-пакет")
 
     def initialize_board(self) -> None:
+        """
+        Инициализация платы:
+        - открываем порт
+        - отправляем стартовую последовательность БЕЗ ожидания ответа
+        - отправляем первый рабочий нулевой snapshot
+        - ждем стабилизацию
+        - чистим входной буфер
+        """
         self.open()
         self._run_init_sequence()
+
         time.sleep(0.05)
         self._send_working_zero_snapshot()
+
+        # Даем плате время спокойно перейти в рабочий режим
+        time.sleep(0.1)
+
+        # Чистим мусор/остатки после старта
+        if self._ser:
+            self._ser.reset_input_buffer()
+
         self._initialized = True
+        print("[INIT] Board initialized")
 
     def ping(self) -> bool:
         """
@@ -193,26 +212,33 @@ class IOBoardDriver:
     def _build_full_packet(self, state_bytes: list[int]) -> bytes:
         return self._build_main_packet(state_bytes) + self.SHORT_PACKET
 
-    def _read_response(self, wait_timeout: float = 0.2, tail_wait: float = 0.02) -> bytes:
+    def _read_response(self, wait_timeout: float = 0.3, settle_time: float = 0.03) -> bytes:
+        """
+        Читаем ответ от платы.
+        Логика:
+        - ждем первые байты
+        - как только байты начали идти, собираем их
+        - когда линия затихла на settle_time, считаем ответ законченным
+        """
         if not self._ser:
             return b""
 
         start_time = time.time()
         data = bytearray()
+        last_rx_time = None
 
         while time.time() - start_time < wait_timeout:
             waiting = self._ser.in_waiting
             if waiting > 0:
-                data.extend(self._ser.read(waiting))
-                time.sleep(tail_wait)
+                chunk = self._ser.read(waiting)
+                if chunk:
+                    data.extend(chunk)
+                    last_rx_time = time.time()
 
-                while self._ser.in_waiting > 0:
-                    data.extend(self._ser.read(self._ser.in_waiting))
-                    time.sleep(0.005)
+            if last_rx_time is not None and (time.time() - last_rx_time) >= settle_time:
+                break
 
-                return bytes(data)
-
-            time.sleep(0.005)
+            time.sleep(0.002)
 
         return bytes(data)
 
@@ -222,36 +248,45 @@ class IOBoardDriver:
 
         tx_packet = self._build_full_packet(state_bytes)
 
+        # Перед рабочей командой очищаем хвосты старых ответов
         self._ser.reset_input_buffer()
+
         self._ser.write(tx_packet)
         self._ser.flush()
 
         rx_packet = self._read_response()
 
+        print(f"[BOARD] {label} TX: {tx_packet.hex(' ').upper()}")
+
         if not rx_packet:
             print(f"[BOARD] {label}: нет ответа от платы")
             return False
 
-        expected_rx = tx_packet + self.EXPECTED_ACK
+        print(f"[BOARD] {label} RX: {rx_packet.hex(' ').upper()}")
 
-        if rx_packet == expected_rx:
-            print(f"[BOARD] {label}: OK")
+        ack = self.EXPECTED_ACK
+
+        # 1. Идеальный случай: echo + ack
+        if rx_packet == tx_packet + ack:
+            print(f"[BOARD] {label}: OK (echo + ack)")
             return True
 
-        if not rx_packet.startswith(tx_packet):
-            print(f"[BOARD] {label}: echo не совпал")
-            print(f"[BOARD] TX: {tx_packet.hex(' ').upper()}")
-            print(f"[BOARD] RX: {rx_packet.hex(' ').upper()}")
-            return False
+        # 2. Только ACK
+        if rx_packet == ack:
+            print(f"[BOARD] {label}: OK (ack only)")
+            return True
 
-        rx_tail = rx_packet[len(tx_packet):]
-        if rx_tail != self.EXPECTED_ACK:
-            print(f"[BOARD] {label}: ACK не совпал")
-            print(f"[BOARD] expected ACK: {self.EXPECTED_ACK.hex(' ').upper()}")
-            print(f"[BOARD] RX tail:      {rx_tail.hex(' ').upper()}")
-            return False
+        # 3. Наш tx где-то внутри + ответ заканчивается ACK
+        if rx_packet.endswith(ack) and tx_packet in rx_packet:
+            print(f"[BOARD] {label}: OK (tx found + ack at end)")
+            return True
 
-        print(f"[BOARD] {label}: нестандартный ответ")
+        # 4. Просто ACK где-то внутри
+        if ack in rx_packet:
+            print(f"[BOARD] {label}: OK (ack found in response)")
+            return True
+
+        print(f"[BOARD] {label}: ответ не распознан")
         return False
 
     # ----------------------------
@@ -283,11 +318,16 @@ class IOBoardDriver:
         self._ser.flush()
 
         if label:
-            print(f"[INIT] {label:<12}  {data_hex}")
+            print(f"[INIT] {label:<12} {data_hex}")
         else:
             print(f"[INIT] {data_hex}")
 
     def _run_init_sequence(self) -> None:
+        """
+        Стартовая последовательность.
+        Здесь ОТВЕТЫ НЕ ЖДЕМ.
+        Просто строго отправляем нужные кадры и выдерживаем паузы.
+        """
         sequence = [
             ("85 04 00 76", 0.009940833, "start_1"),
             ("84 04 00 77", 0.009934458, "start_2"),
@@ -344,6 +384,7 @@ class IOBoardDriver:
         """
         После init отправляем первый рабочий snapshot:
         сначала main packet, потом через ~3.93 ms хвост.
+        Ответ тут тоже специально не ждем.
         """
         if not self._ser:
             raise BoardNotConnectedError("COM-порт платы не открыт")
@@ -354,7 +395,9 @@ class IOBoardDriver:
         print("[INIT] === WORKING ZERO SNAPSHOT START ===")
         self._ser.write(part1)
         self._ser.flush()
+
         self._sleep_precise(0.00393)
+
         self._ser.write(part2)
         self._ser.flush()
         print("[INIT] === WORKING ZERO SNAPSHOT DONE ===")
