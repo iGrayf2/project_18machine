@@ -1,7 +1,7 @@
 import serial
 
 
-PORT = "COM8"      # поставь свой порт ESP32
+PORT = "COM6"      # поставь свой порт ESP32
 BAUDRATE = 115200
 
 
