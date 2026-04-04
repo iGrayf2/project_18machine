@@ -12,7 +12,6 @@ async def websocket_endpoint(websocket: WebSocket):
 
     async def sender_loop():
         while True:
-            execution_service.simulate_step()
             snapshot = execution_service.get_status_snapshot()
 
             await websocket.send_json({
@@ -20,7 +19,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 "data": snapshot,
             })
 
-            await asyncio.sleep(0.2)
+            await asyncio.sleep(0.1)
 
     async def receiver_loop():
         while True:

@@ -1,4 +1,9 @@
+import os
+import threading
+import time
+
 from app.core.engine import MachineEngine
+from app.hardware.encoder_reader import EncoderReader
 from app.hardware.hardware_manager import HardwareManager
 from app.services.recipe_service import RecipeService
 
@@ -9,6 +14,22 @@ class ExecutionService:
         self.recipe_service = RecipeService()
         self.engine = MachineEngine(self.hardware)
 
+        self.encoder_mode = os.getenv("ENCODER_MODE", "sim").strip().lower()
+
+        self.encoder_reader: EncoderReader | None = None
+        if self.encoder_mode == "real":
+            encoder_port = os.getenv("ENCODER_PORT", "COM6")
+            encoder_baudrate = int(os.getenv("ENCODER_BAUDRATE", "115200"))
+
+            self.encoder_reader = EncoderReader(
+                port=encoder_port,
+                baudrate=encoder_baudrate,
+            )
+            self.encoder_reader.start()
+            print(f"[EXECUTION] Encoder REAL mode: {encoder_port} {encoder_baudrate}")
+        else:
+            print("[EXECUTION] Encoder SIM mode")
+
         first_recipe = self.recipe_service.get_first_recipe()
         if first_recipe:
             self.engine.load_recipe(first_recipe)
@@ -17,7 +38,53 @@ class ExecutionService:
         self._sim_rpm = 30
         self._sim_turn_signal = False
 
+        self._loop_interval = float(os.getenv("ENGINE_LOOP_INTERVAL", "0.05"))  # 50 мс
+        self._loop_thread: threading.Thread | None = None
+        self._stop_event = threading.Event()
+
+        self.start_loop()
+
+    def start_loop(self) -> None:
+        if self._loop_thread and self._loop_thread.is_alive():
+            return
+
+        self._stop_event.clear()
+        self._loop_thread = threading.Thread(target=self._run_loop, daemon=True)
+        self._loop_thread.start()
+        print(f"[EXECUTION] Engine loop started, interval={self._loop_interval}s")
+
+    def _run_loop(self) -> None:
+        while not self._stop_event.is_set():
+            try:
+                self.update_once()
+            except Exception as e:
+                print(f"[EXECUTION] Engine loop error: {e}")
+
+            time.sleep(self._loop_interval)
+
+    def update_once(self) -> None:
+        if self.encoder_reader:
+            enc = self.encoder_reader.get_snapshot()
+            self.engine.update(
+                angle=enc.angle,
+                rpm=int(enc.rpm),
+                turn_signal=enc.turn_signal,
+            )
+        else:
+            self.simulate_step()
+
     def close(self) -> None:
+        self._stop_event.set()
+
+        if self._loop_thread and self._loop_thread.is_alive():
+            self._loop_thread.join(timeout=2.0)
+
+        try:
+            if self.encoder_reader:
+                self.encoder_reader.stop()
+        except Exception as e:
+            print(f"[EXECUTION] Encoder close error: {e}")
+
         try:
             self.hardware.close()
         except Exception as e:
@@ -51,6 +118,15 @@ class ExecutionService:
         recipes = self.recipe_service.get_recipe_short_list()
         snapshot["recipes"] = recipes
         snapshot["recipes_count"] = len(recipes)
+
+        if self.encoder_reader:
+            enc = self.encoder_reader.get_snapshot()
+            snapshot["encoder_connected"] = enc.is_connected
+            snapshot["encoder_raw_line"] = enc.raw_line
+        else:
+            snapshot["encoder_connected"] = False
+            snapshot["encoder_raw_line"] = ""
+
         return snapshot
 
     def handle_action(self, payload: dict) -> dict | None:
@@ -82,8 +158,6 @@ class ExecutionService:
 
         return {"type": "error", "data": {"message": f"Неизвестное действие: {action}"}}
 
-    # Временная симуляция движения машины.
-    # Позже будет заменена на реальные данные от энкодера и датчика оборота.
     def simulate_step(self) -> None:
         previous_angle = self._sim_angle
         next_angle = previous_angle + 15
