@@ -6,16 +6,12 @@ constexpr int PIN_Z   = 21;
 constexpr int PIN_RPM = 22;   // индукционный датчик через оптопару
 
 constexpr int ENCODER_PULSES_PER_REV = 1000;
-
-// Сколько импульсов датчика соответствует 1 обороту машины.
-// Если датчик дает 1 импульс на 1 оборот — оставь 1.
 constexpr int RPM_SENSOR_PULSES_PER_REV = 1;
 
 constexpr unsigned long SEND_INTERVAL_MS = 100;
 constexpr float MAX_VALID_RPM            = 90.0f;
 
 // Защита от мусорных слишком частых импульсов датчика
-// Было 150000, я бы поднял хотя бы до 300000
 constexpr unsigned long RPM_MIN_PULSE_INTERVAL_US = 300000UL;
 
 // Минимальный timeout, если обороты уже были
@@ -38,17 +34,19 @@ volatile unsigned long rpmPeriods[RPM_AVG_SAMPLES] = {0};
 volatile int rpmPeriodIndex = 0;
 volatile int rpmPeriodCount = 0;
 
+// Новый флаг: был реальный импульс полного оборота
+volatile bool turnPulseFlag = false;
+
 unsigned long lastSendMs = 0;
 
 int lastAngle = -1;
 int lastRpm10 = -1;
+int lastT = -1;
 
 void IRAM_ATTR isrA() {
   bool a = digitalRead(PIN_A);
   bool b = digitalRead(PIN_B);
 
-  // Если направление окажется обратным —
-  // поменяй ++ и -- местами.
   if (a == b) {
     encoderCount++;
   } else {
@@ -74,7 +72,6 @@ void IRAM_ATTR isrRpmSensor() {
   if (lastRpmPulseMicros != 0) {
     unsigned long dt = now - lastRpmPulseMicros;
 
-    // Отсекаем слишком частые ложные импульсы
     if (dt < RPM_MIN_PULSE_INTERVAL_US) {
       return;
     }
@@ -91,6 +88,7 @@ void IRAM_ATTR isrRpmSensor() {
   }
 
   lastRpmPulseMicros = now;
+  turnPulseFlag = true;
 }
 
 int getAngleFromCount(long count) {
@@ -149,7 +147,7 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(PIN_A), isrA, CHANGE);
   attachInterrupt(digitalPinToInterrupt(PIN_Z), isrZ, FALLING);
 
-  // У тебя в рабочем варианте именно RISING — оставляем как есть
+  // Оставляем тот фронт, на котором у тебя реально работает
   attachInterrupt(digitalPinToInterrupt(PIN_RPM), isrRpmSensor, RISING);
 
   delay(200);
@@ -168,15 +166,15 @@ void loop() {
   bool z = zPulseFlag;
   zPulseFlag = false;
 
+  bool turnPulse = turnPulseFlag;
+  turnPulseFlag = false;
+
   unsigned long lastRpmPulse = lastRpmPulseMicros;
   interrupts();
 
   unsigned long avgPeriod = getAverageRpmPeriod();
   float rpm = getRpmFromPeriod(avgPeriod);
 
-  // Адаптивный timeout:
-  // если период известен, ждем примерно 2.5 периода,
-  // но в разумных границах
   unsigned long rpmTimeoutUs = RPM_MAX_TIMEOUT_US;
 
   if (avgPeriod > 0) {
@@ -200,17 +198,21 @@ void loop() {
 
   int angle = z ? 0 : getAngleFromCount(count);
   int rpm10 = (int)(rpm * 10.0f + 0.5f);
+  int tInt = turnPulse ? 1 : 0;
 
-  if (angle != lastAngle || z || rpm10 != lastRpm10) {
+  if (angle != lastAngle || z || rpm10 != lastRpm10 || tInt != lastT) {
     Serial.print("A:");
     Serial.print(angle);
     Serial.print(" R:");
     Serial.print(rpm, 1);
     Serial.print(" Z:");
     Serial.print(z ? 1 : 0);
+    Serial.print(" T:");
+    Serial.print(turnPulse ? 1 : 0);
     Serial.println();
 
     lastAngle = angle;
     lastRpm10 = rpm10;
+    lastT = tInt;
   }
 }
