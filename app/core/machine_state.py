@@ -17,7 +17,7 @@ class MachineState:
     current_cycle_turn_target: int = 0
 
     encoder_angle: int = 0
-    rpm: int = 0
+    rpm: float = 0.0
 
     state: str = "paused"  # running / paused / idle / error
 

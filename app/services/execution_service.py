@@ -37,6 +37,7 @@ class ExecutionService:
         self._sim_angle = 0
         self._sim_rpm = 30
         self._sim_turn_signal = False
+        self._sim_turn_pulse = False
 
         self._loop_interval = float(os.getenv("ENGINE_LOOP_INTERVAL", "0.05"))  # 50 мс
         self._loop_thread: threading.Thread | None = None
@@ -67,8 +68,9 @@ class ExecutionService:
             enc = self.encoder_reader.get_snapshot()
             self.engine.update(
                 angle=enc.angle,
-                rpm=int(enc.rpm),
+                rpm=enc.rpm,
                 turn_signal=enc.turn_signal,
+                turn_pulse=enc.turn_pulse,
             )
         else:
             self.simulate_step()
@@ -165,8 +167,10 @@ class ExecutionService:
         if next_angle > 360:
             next_angle = next_angle - 360
             self._sim_turn_signal = True
+            self._sim_turn_pulse = True
         else:
             self._sim_turn_signal = False
+            self._sim_turn_pulse = False
 
         self._sim_angle = next_angle
 
@@ -174,6 +178,7 @@ class ExecutionService:
             angle=self._sim_angle,
             rpm=self._sim_rpm,
             turn_signal=self._sim_turn_signal,
+            turn_pulse=self._sim_turn_pulse,
         )
 
 

@@ -1,3 +1,5 @@
+import time
+
 from app.core.machine_state import MachineState
 from app.hardware.hardware_manager import HardwareManager
 
@@ -15,6 +17,11 @@ class MachineEngine:
 
         self.last_angle = 0
         self.last_turn_signal = False
+        self.last_turn_pulse = False
+
+        # Через сколько без движения считаем, что машина стоит
+        self.motion_timeout_sec = 0.5
+        self.last_motion_ts = time.monotonic()
 
         # Храним уже выполненные события как уникальные ключи:
         # (valve, angle, event)
@@ -29,6 +36,8 @@ class MachineEngine:
 
         self.last_angle = 0
         self.last_turn_signal = False
+        self.last_turn_pulse = False
+        self.last_motion_ts = time.monotonic()
         self.executed_event_keys = set()
 
         self.machine_state.selected_recipe_id = recipe.get("id")
@@ -49,6 +58,9 @@ class MachineEngine:
         self.current_turn_in_cycle = 1
         self.current_recipe_repeat = 1
         self.last_angle = 0
+        self.last_turn_signal = False
+        self.last_turn_pulse = False
+        self.last_motion_ts = time.monotonic()
         self.executed_event_keys = set()
 
         self.machine_state.current_cycle_index = 1
@@ -58,7 +70,7 @@ class MachineEngine:
         cycle = self.get_current_cycle()
         self.machine_state.current_cycle_turn_target = cycle.get("turns", 0) if cycle else 0
 
-    def update(self, angle: int, rpm: int, turn_signal: bool) -> None:
+    def update(self, angle: int, rpm: float, turn_signal: bool, turn_pulse: bool) -> None:
         self.machine_state.encoder_angle = angle
         self.machine_state.rpm = rpm
 
@@ -66,10 +78,22 @@ class MachineEngine:
             self.machine_state.state = "idle"
             return
 
-        if rpm <= 0:
+        now = time.monotonic()
+
+        # Считаем, что движение есть, если:
+        # 1) угол изменился
+        # 2) или пришел Z
+        if angle != self.last_angle or turn_signal:
+            self.last_motion_ts = now
+
+        is_moving = (now - self.last_motion_ts) <= self.motion_timeout_sec
+
+        if not is_moving:
             self.machine_state.state = "paused"
             self.last_angle = angle
             self.last_turn_signal = turn_signal
+            self.last_turn_pulse = turn_pulse
+            self.machine_state.valves = self.hardware.get_all_valves()
             return
 
         self.machine_state.state = "running"
@@ -78,16 +102,18 @@ class MachineEngine:
         if cycle is None:
             return
 
-        # События только в первом обороте текущего цикла
+        # Пока оставляем твою текущую логику:
+        # события только на первом обороте текущего цикла
         if self.current_turn_in_cycle == 1:
             self._process_cycle_events(angle, cycle)
 
-        # Новый оборот по фронту датчика
-        if self._is_new_turn(turn_signal):
+        # Полный оборот машины считаем по turn_pulse
+        if self._is_new_turn_pulse(turn_pulse):
             self._advance_turn_or_cycle()
 
         self.last_angle = angle
         self.last_turn_signal = turn_signal
+        self.last_turn_pulse = turn_pulse
 
         self.machine_state.current_cycle_index = self.current_cycle_index + 1
         self.machine_state.current_cycle_turn = self.current_turn_in_cycle
@@ -114,8 +140,6 @@ class MachineEngine:
                 self.executed_event_keys.add(event_key)
 
         if pending_updates:
-            # Если в одном проходе для одного клапана пришло несколько событий,
-            # оставляем последнее по порядку.
             deduped_updates = self._dedupe_keep_last(pending_updates)
             self.hardware.set_valves_bulk(deduped_updates)
 
@@ -154,8 +178,8 @@ class MachineEngine:
         self.current_turn_in_cycle = 1
         self.executed_event_keys = set()
 
-    def _is_new_turn(self, turn_signal: bool) -> bool:
-        return (not self.last_turn_signal) and turn_signal
+    def _is_new_turn_pulse(self, turn_pulse: bool) -> bool:
+        return (not self.last_turn_pulse) and turn_pulse
 
     def _angle_passed(self, event_angle: int, current_angle: int) -> bool:
         if self.last_angle <= current_angle:

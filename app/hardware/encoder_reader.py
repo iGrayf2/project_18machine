@@ -9,7 +9,8 @@ import serial
 class EncoderSnapshot:
     angle: int = 0
     rpm: float = 0.0
-    turn_signal: bool = False
+    turn_signal: bool = False   # Z
+    turn_pulse: bool = False    # T
     is_connected: bool = False
     raw_line: str = ""
 
@@ -35,9 +36,9 @@ class EncoderReader:
         self._angle = 0
         self._rpm = 0.0
         self._turn_signal = False
+        self._turn_pulse = False
         self._is_connected = False
         self._last_line = ""
-        self._last_turn_ts = 0.0
 
     def start(self) -> None:
         if self._thread and self._thread.is_alive():
@@ -58,15 +59,17 @@ class EncoderReader:
     def get_snapshot(self) -> EncoderSnapshot:
         with self._lock:
             turn_signal = self._turn_signal
+            turn_pulse = self._turn_pulse
 
-            # turn_signal должен быть кратковременным импульсом
-            # один раз прочитали -> сбрасываем
+            # импульсные флаги читаем один раз
             self._turn_signal = False
+            self._turn_pulse = False
 
             return EncoderSnapshot(
                 angle=self._angle,
                 rpm=self._rpm,
                 turn_signal=turn_signal,
+                turn_pulse=turn_pulse,
                 is_connected=self._is_connected,
                 raw_line=self._last_line,
             )
@@ -78,6 +81,7 @@ class EncoderReader:
 
                 while not self._stop_event.is_set():
                     line = self._ser.readline().decode("utf-8", errors="ignore").strip()
+
                     if not line:
                         continue
 
@@ -85,7 +89,7 @@ class EncoderReader:
                     if parsed is None:
                         continue
 
-                    angle, rpm, turn_signal = parsed
+                    angle, rpm, turn_signal, turn_pulse = parsed
 
                     with self._lock:
                         self._angle = angle
@@ -95,13 +99,18 @@ class EncoderReader:
 
                         if turn_signal:
                             self._turn_signal = True
-                            self._last_turn_ts = time.time()
+
+                        if turn_pulse:
+                            self._turn_pulse = True
 
             except Exception as e:
                 print(f"[ENCODER] Reader error: {e}")
+
                 with self._lock:
                     self._is_connected = False
                     self._rpm = 0.0
+                    self._turn_signal = False
+                    self._turn_pulse = False
 
                 self._close_serial()
 
@@ -119,7 +128,6 @@ class EncoderReader:
             write_timeout=self.timeout,
         )
 
-        # ESP32 может перезагружаться при открытии COM
         time.sleep(2.0)
         self._ser.reset_input_buffer()
 
@@ -135,29 +143,33 @@ class EncoderReader:
             self._ser = None
 
     @staticmethod
-    def _parse_line(line: str) -> tuple[int, float, bool] | None:
-        # Ждем строки вида:
-        # A:123 R:16.6 Z:0
+    def _parse_line(line: str) -> tuple[int, float, bool, bool] | None:
+        """
+        Формат:
+            A:123 R:16.6 Z:0 T:1
+        """
         try:
             parts = line.split()
-            if len(parts) != 3:
+            if len(parts) != 4:
                 return None
 
-            a_part, r_part, z_part = parts
+            fields: dict[str, str] = {}
 
-            if not a_part.startswith("A:"):
-                return None
-            if not r_part.startswith("R:"):
-                return None
-            if not z_part.startswith("Z:"):
+            for part in parts:
+                if ":" not in part:
+                    return None
+                key, value = part.split(":", 1)
+                fields[key] = value
+
+            if "A" not in fields or "R" not in fields or "Z" not in fields or "T" not in fields:
                 return None
 
-            angle = int(a_part[2:])
-            rpm = float(r_part[2:])
-            z_value = int(z_part[2:])
+            angle = int(fields["A"])
+            rpm = float(fields["R"])
+            turn_signal = int(fields["Z"]) == 1
+            turn_pulse = int(fields["T"]) == 1
 
-            turn_signal = z_value == 1
-            return angle, rpm, turn_signal
+            return angle, rpm, turn_signal, turn_pulse
 
         except Exception:
             return None
